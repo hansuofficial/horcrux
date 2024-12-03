@@ -20,7 +20,7 @@ spec:
       containers:
       - name: horcrux-server
         imagePullPolicy: IfNotPresent
-        image: 923eb773-kr1-registry.container.nhncloud.com/uragan-container-registry/horcrux@sha256:8599a5345d22d7406086414d37e900a2854c922596ca0aee89b65b681c96e393
+        image: 923eb773-kr1-registry.container.nhncloud.com/uragan-container-registry/horcrux@sha256:8405755f2b5a9bff59566166644b31fd1fe2c32716c74afceea3fcb49518dc0c
         ports:
         - containerPort: 8080
         env:
