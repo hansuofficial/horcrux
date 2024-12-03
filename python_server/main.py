@@ -3,8 +3,30 @@ import json
 import subprocess
 import uuid
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 app = Flask(__name__)
+
+
+# allowed_origins = [
+#     "https://maas-portal.aivn.kr",
+#     "https://chatsea.aivn.kr",
+#     "http://localhost",
+#     "https://localhost"
+# ]
+
+# Enable CORS for the specified origins
+# CORS(app, resources={r"/*": {"origins": allowed_origins}})
+CORS(app, resources={r"/*": {"origins": ["https://maas-portal.aivn.kr", "https://chatsea.aivn.kr", "http://localhost", "https://localhost"]}})
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Max-Age"] = "3600"
+    return response
+
 
 def run_wine_arp(start_lat, start_lon, dest_lat, dest_lon):
     exe_path = "/app/code_smaller/QuadWeatherSouthPath/x64/Release/QuadWeatherSouthPath.exe"
@@ -80,10 +102,10 @@ def transform_coordinates(result):
 @app.route("/calc-route", methods=["GET"])
 def calc_route_get():
     try:
-        start_lat = float(request.args.get("start_lat", ""))
-        start_lon = float(request.args.get("start_lon", ""))
-        dest_lat = float(request.args.get("dest_lat", ""))
-        dest_lon = float(request.args.get("dest_lon", ""))
+        start_lat = float(request.args.get("start_latitude", ""))
+        start_lon = float(request.args.get("start_longitude", ""))
+        dest_lat = float(request.args.get("end_latitude", ""))
+        dest_lon = float(request.args.get("end_longitude", ""))
     except ValueError:
         return jsonify({"error": "Invalid query parameters. Ensure all coordinates are valid floating-point numbers."}), 400
 
@@ -97,10 +119,10 @@ def calc_route_post():
         return jsonify({"error": "Invalid JSON body."}), 400
 
     try:
-        start_lat = float(data.get("start_lat"))
-        start_lon = float(data.get("start_lon"))
-        dest_lat = float(data.get("dest_lat"))
-        dest_lon = float(data.get("dest_lon"))
+        start_lat = float(data.get("start_latitude"))
+        start_lon = float(data.get("start_longitude"))
+        dest_lat = float(data.get("end_latitude"))
+        dest_lon = float(data.get("end_longitude"))
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid JSON body. Ensure all coordinates are valid floating-point numbers."}), 400
     
@@ -115,6 +137,8 @@ def healthz():
 @app.route("/readiness", methods=["GET"])
 def readiness():
     return jsonify({"status": "ready"}), 200
+
+
 
 
 if __name__ == "__main__":
