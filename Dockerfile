@@ -13,7 +13,7 @@ WORKDIR /app
 
 COPY /python_server/main.py /app/app.py
 COPY /python_server/requirements.txt /app/requirements.txt
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 
 RUN mkdir files output

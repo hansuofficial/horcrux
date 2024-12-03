@@ -1,13 +1,17 @@
 import os
 import json
 import subprocess
+import uuid
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 def run_wine_arp(start_lat, start_lon, dest_lat, dest_lon):
     exe_path = "/app/code_smaller/QuadWeatherSouthPath/x64/Release/QuadWeatherSouthPath.exe"
-    output_file = "/app/output/result.json"
+    working_dir = "/app/code_smaller/QuadWeatherSouthPath/QuadWeatherSouthPath"
+
+    unique_id = uuid.uuid4()
+    output_file = f"/app/output/result_{unique_id}.json"
 
     command = [
         "wine",
@@ -20,9 +24,20 @@ def run_wine_arp(start_lat, start_lon, dest_lat, dest_lon):
     ]
 
     try:
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, cwd=working_dir)
     except subprocess.CalledProcessError as e:
-        return None, f"QuadWeatherSouthPath.exe exited with code {e.returncode}"
+        if e.returncode == 10:
+            return jsonify({"error": f"Wrong number of argumenets passed to QuadWeatherSouthPath.exe"}), 500
+        elif e.returncode == 11:
+            return jsonify({"error": f"Given coordinates outside of service area"}), 500
+        elif e.returncode == 12:
+            return jsonify({"error": f"Could not open a file for writing json output (list of coordinates)"}), 500
+        elif e.returncode == 13:
+            return jsonify({"error": f"Invalid parameters. Check the data type"}), 500
+        elif e.returncode == 14:
+            return jsonify({"error": f"Unknown internal error from QuadWeatherSouthPath.exe"}), 500
+        else:
+            return jsonify({"error": f"Unknown error from wine. Error code: {e.returncode}"}), 500
     except Exception as e:
         return None, f"Failed to execute QuadWeatherSouthPath.exe: {str(e)}"
 
@@ -30,23 +45,41 @@ def run_wine_arp(start_lat, start_lon, dest_lat, dest_lon):
         with open(output_file, "r") as f:
             result = json.load(f)
     except FileNotFoundError:
-        return None, "Failed to read result file: File not found."
+        return jsonify({"error": f"Wine exited successfully but cannot find the output file: {output_file}"}), 500
     except json.JSONDecodeError:
-        return None, "Failed to parse JSON output from result file."
+         return jsonify({"error": f"Error while decoding json from {output_file}"}), 500
 
     try:
         os.remove(output_file)
     except Exception as e:
-        return None, f"Failed to delete result file: {str(e)}"
+        jsonify({"error": f"Could not delete the temporary output file: {str(e)}"}), 500
 
-    return result, None
+    transformed_result = transform_coordinates(result)
+
+    return jsonify(transformed_result), 200
+
+def transform_coordinates(result):
+    """
+    Transforms the keys 'lat' and 'lon' in the result JSON to 'latitude' and 'longitude'.
+    
+    Args:
+        result (list of dict): A list of dictionaries with 'lat' and 'lon' keys.
+
+    Returns:
+        list of dict: Transformed list with 'latitude' and 'longitude' keys.
+    """
+    transformed = []
+    for entry in result:
+        transformed.append({
+            "latitude": entry.get("lat"),
+            "longitude": entry.get("lon")
+        })
+    return transformed
 
 
-# GET endpoint to calculate route
 @app.route("/calc-route", methods=["GET"])
 def calc_route_get():
     try:
-        # Parse query parameters
         start_lat = float(request.args.get("start_lat", ""))
         start_lon = float(request.args.get("start_lon", ""))
         dest_lat = float(request.args.get("dest_lat", ""))
@@ -54,15 +87,9 @@ def calc_route_get():
     except ValueError:
         return jsonify({"error": "Invalid query parameters. Ensure all coordinates are valid floating-point numbers."}), 400
 
-    # Run the external command
-    result, error = run_wine_arp(start_lat, start_lon, dest_lat, dest_lon)
-    if error:
-        return jsonify({"error": error}), 500
-
-    return jsonify(result), 200
+    return run_wine_arp(start_lat, start_lon, dest_lat, dest_lon)
 
 
-# POST endpoint to calculate route
 @app.route("/calc-route", methods=["POST"])
 def calc_route_post():
     data = request.get_json()
@@ -70,29 +97,21 @@ def calc_route_post():
         return jsonify({"error": "Invalid JSON body."}), 400
 
     try:
-        # Parse JSON body
         start_lat = float(data.get("start_lat"))
         start_lon = float(data.get("start_lon"))
         dest_lat = float(data.get("dest_lat"))
         dest_lon = float(data.get("dest_lon"))
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid JSON body. Ensure all coordinates are valid floating-point numbers."}), 400
-
-    # Run the external command
-    result, error = run_wine_arp(start_lat, start_lon, dest_lat, dest_lon)
-    if error:
-        return jsonify({"error": error}), 500
-
-    return jsonify(result), 200
+    
+    return run_wine_arp(start_lat, start_lon, dest_lat, dest_lon)
 
 
-# Health check endpoint
-@app.route("/healthz", methods=["GET"])
+@app.route("/health", methods=["GET"])
 def healthz():
     return jsonify({"status": "healthy"}), 200
 
 
-# Readiness check endpoint
 @app.route("/readiness", methods=["GET"])
 def readiness():
     return jsonify({"status": "ready"}), 200
