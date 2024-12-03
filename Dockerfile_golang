@@ -1,0 +1,50 @@
+# FROM golang:1.21 AS builder
+FROM golang:1.21 AS builder
+
+WORKDIR /app
+
+COPY /horcrux_server .
+# COPY /horcrux_server/go.mod /horcrux_server/go.sum ./
+RUN go mod download
+
+RUN GOOS=linux GOARCH=amd64 go build -o server .
+
+
+FROM scottyhardy/docker-wine:latest
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /libc_workspace
+
+# Install required tools and download glibc
+# RUN apt update && apt install -y \
+#     wget build-essential gawk bison python3-dev \
+#     && wget http://ftp.gnu.org/gnu/libc/glibc-2.34.tar.gz \
+#     && tar -xvzf glibc-2.34.tar.gz \
+#     && cd glibc-2.34 \
+#     && mkdir build && cd build \
+#     && ../configure --prefix=/opt/glibc-2.34 \
+#     && make -j$(nproc) \
+#     && make install \
+#     && rm -rf /glibc-2.34*
+
+# Add the new glibc to the library path
+# ENV LD_LIBRARY_PATH=
+# ENV LD_LIBRARY_PATH="/opt/glibc-2.34/lib:$LD_LIBRARY_PATH"
+
+RUN apt update && \
+    apt install -y --no-install-recommends \
+    unzip && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
+
+
+WORKDIR /app
+COPY --from=builder /app/server /app/server
+RUN chmod +x /app/server
+
+RUN mkdir files output
+COPY code_smaller.zip /app/files
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+ENTRYPOINT ["/start.sh"]
